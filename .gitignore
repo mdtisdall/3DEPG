@@ -1,0 +1,5 @@
+*.dSYM
+*.un~
+*.swp
+*.o
+test
