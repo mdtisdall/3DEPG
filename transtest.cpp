@@ -62,6 +62,25 @@ void form3(
   cout << chrono::duration <double, milli> (diff).count() << " ms" << endl;
 }
 
+void form4(
+  float *states,
+  float *trans,
+  float *output) {
+  
+  auto start = chrono::steady_clock::now();
+
+  for(unsigned int i = 0; i < 100; i ++) {
+    cblas_sgemm(
+      CblasColMajor, CblasNoTrans, CblasTrans,
+      256 * 256 * 256, 3, 3,
+      1.0, states, 256 * 256 * 256, trans, 3, 0, output, 256 * 256 * 256);
+  }
+  
+  auto end = chrono::steady_clock::now();
+  auto diff = end - start;
+  cout << chrono::duration <double, milli> (diff).count() << " ms" << endl;
+}
+
 int main() {
   float *states = (float*) malloc(sizeof(float) * 3 * 256 * 256 * 256);
   float trans [3 * 3];
@@ -71,6 +90,7 @@ int main() {
   form1(states, trans, output);
   form2(states, trans, output);
   form3(states, trans, output);
+  form4(states, trans, output);
   
 
   return 0;
