@@ -25,5 +25,16 @@ int main() {
     originState.fPlus << ", " <<
     originState.fMinus << ", " <<
     originState.z << ")" << std::endl; 
+  
+  SpinStatesT::Relaxation relaxation(100, 1000, 100);
+  relaxation.relax(&spinStates);
+  
+  originState = spinStates.getState(origin);
+  
+  std::cout << "after relaxation: (" <<
+    originState.fPlus << ", " <<
+    originState.fMinus << ", " <<
+    originState.z << ")" << std::endl; 
+
   return 0;
 }

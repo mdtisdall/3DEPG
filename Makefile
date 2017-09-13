@@ -24,5 +24,5 @@ transtest :
 test : blas_local_MKL.o
 
 clean:
-	rm test
-	rm transtest
+	rm -rf test
+	rm -rf transtest

@@ -42,7 +42,7 @@ class SpinStates {
 
       return ret;
     }
-
+    
     class Excitation {
       public:
         Excitation(value_type flipAngle, value_type phase) :
@@ -102,6 +102,39 @@ class SpinStates {
 
       protected:
         std::vector< std::complex<value_type> > opMatrixTrans;
+    };
+
+    class Relaxation {
+      public:
+        Relaxation(value_type duration, value_type t1, value_type t2Star) {
+
+          relaxationTerm[0] = relaxationTerm[1] = exp(-duration/t2Star);
+          relaxationTerm[2] = exp(-duration/t1);
+          relaxationTerm[3] = value_type(1) - relaxationTerm[2];
+        }
+
+        void relax(SpinStates<index_type, value_type> *states) {
+          const unsigned int curStatesLocal = states->curStates;
+          const unsigned int maxStatesLocal = states->maxStates;
+
+          BLAS::scal(
+            curStatesLocal, relaxationTerm, states->stateValues.data(), 1);
+          
+          BLAS::scal(
+            curStatesLocal,
+            relaxationTerm + 1,
+            states->stateValues.data() + maxStatesLocal, 1);
+          
+          BLAS::scal(
+            curStatesLocal,
+            relaxationTerm + 2,
+            states->stateValues.data() + 2 * maxStatesLocal, 1);
+
+          states->stateValues[2*maxStatesLocal] += relaxationTerm[3];
+        }
+
+      protected:
+        cvalue_type relaxationTerm[4];
     };
 
   protected:
