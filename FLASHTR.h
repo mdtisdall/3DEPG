@@ -15,13 +15,20 @@ class FLASHTR {
       const value_type t2) :
       excitation(flipAngle, flipPhase),
       spoiling(spoilingGrad),
-      relaxation(tr, t1, t2)
+      relaxation(tr, t1, t2),
+      invPhase(std::polar(value_type(1.0),
+        -flipPhase + value_type(M_PI) / value_type(2)))
     {}
 
-    void operator()(SpinStates *states) {
-      excitation(states); 
+    typename SpinStates::cvalue_type operator()(SpinStates *states) {
+      excitation(states);
+      typename SpinStates::cvalue_type ret =
+        states->getState(typename SpinStates::StateIndex({0,0,0})).fPlus * 
+        invPhase;
       relaxation(states); 
       spoiling(states); 
+
+      return ret;
     }
 
 
@@ -29,6 +36,7 @@ class FLASHTR {
     typename SpinStates::Excitation excitation;
     typename SpinStates::Spoiling spoiling;
     typename SpinStates::Relaxation relaxation;
+    typename SpinStates::cvalue_type invPhase;
 };
 
 #endif

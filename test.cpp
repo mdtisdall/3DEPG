@@ -16,7 +16,7 @@ int main() {
 
   FLASHTR<SpinStatesT> flashTR(
     value_type(7) * value_type(M_PI) / value_type(180),
-    value_type(M_PI) / value_type(2),
+    0,
     SpinStatesT::StateIndex({1,0,0}),
     10,
     1000,
@@ -24,8 +24,10 @@ int main() {
 
   
   { 
-    flashTR(&spinStates); 
+    SpinStatesT::cvalue_type excitedState = flashTR(&spinStates); 
 
+    std::cout << "FLASH TR signal: " << excitedState << std::endl;
+    
     std::cout << "after FLASH TR:" << std::endl;
     for(int i = -1; i <= 1; i++) {
       SpinStatesT::StateIndex curIndex = {i,0,0};
