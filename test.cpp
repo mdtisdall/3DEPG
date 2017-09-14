@@ -61,6 +61,9 @@ int main() {
     }
   }
   
+  excitation.excite(&spinStates);
+  relaxation.relax(&spinStates);
+  
   { 
     SpinStatesT::Spoiling spoiling(SpinStatesT::StateIndex({0,1,0}));
     spoiling.spoil(&spinStates); 
@@ -81,7 +84,7 @@ int main() {
   }
   
   { 
-    SpinStatesT::Spoiling spoiling(SpinStatesT::StateIndex({0,0,1}));
+    SpinStatesT::Spoiling spoiling(SpinStatesT::StateIndex({0,0,1}), 0.05);
     spoiling.spoil(&spinStates); 
 
     std::cout << "after spoiling:" << std::endl;

@@ -147,8 +147,9 @@ class SpinStates {
     
     class Spoiling {
       public:
-        Spoiling(StateIndex spoilGrad) :
-          spoilGrad(spoilGrad) {}
+        Spoiling(StateIndex spoilGrad, value_type trimThreshold = 0.0) :
+          spoilGrad(spoilGrad),
+          trimThreshold(trimThreshold){}
 
         void spoil(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
@@ -202,6 +203,12 @@ class SpinStates {
 
                 states->stateValues[states->curStates] =
                   states->stateValuesBuffer[curOffset];
+                
+                states->stateValues[states->curStates + states->maxStates]
+                  = cvalue_type(0);
+                
+                states->stateValues[states->curStates + 2 * states->maxStates]
+                  = cvalue_type(0);
 
                 states->curStates++;
               }
@@ -225,9 +232,15 @@ class SpinStates {
                 }
 
                 newStateMap[curfMinusIndex] = states->curStates;
+                
+                states->stateValues[states->curStates]
+                  = cvalue_type(0);
 
                 states->stateValues[states->curStates + states->maxStates] = 
                   states->stateValuesBuffer[curOffset + maxStatesBuffer];
+                
+                states->stateValues[states->curStates + 2 * states->maxStates]
+                  = cvalue_type(0);
 
                 states->curStates++;
               }
@@ -241,10 +254,12 @@ class SpinStates {
 
           states->stateMap = newStateMap;
 
+          states->trimStates(trimThreshold);
         }
 
       protected:
         StateIndex spoilGrad;
+        const value_type trimThreshold;
     };
 
   protected:
@@ -280,6 +295,45 @@ class SpinStates {
       maxStates = newMaxStates;
       stateValues = newStateValues;
       stateValuesBuffer.resize(newMaxStates * 3);
+    }
+
+    void trimStates(const value_type threshold) {
+      StateMapT newMap;
+      size_t newCurStates = 0;
+
+      typename StateMapT::const_iterator mapIt = stateMap.begin();
+
+      for(; stateMap.end() != mapIt; mapIt++) {
+        value_type nrm =
+          BLAS::nrm2(3, stateValues.data() + mapIt->second, maxStates);
+
+        //only copy states larger than threshold
+        if(nrm > threshold) {
+          newMap[mapIt->first] = newCurStates;
+          stateValuesBuffer[newCurStates] =
+            stateValues[mapIt->second];
+          stateValuesBuffer[newCurStates + maxStates] =
+            stateValues[mapIt->second + maxStates];
+          stateValuesBuffer[newCurStates + 2 * maxStates] =
+            stateValues[mapIt->second + 2 * maxStates];
+
+          newCurStates++;
+        }
+      }
+
+      stateMap = newMap;
+      curStates = newCurStates;
+      // move data back from the temporary buffer
+      // this could be eliminated with proper double-buffering...
+      BLAS::copy(curStates, stateValuesBuffer.data(),
+        1, stateValues.data(), 1);
+      BLAS::copy(
+        curStates, stateValuesBuffer.data() + maxStates,
+        1, stateValues.data() + maxStates, 1);
+      BLAS::copy(
+        curStates,
+        stateValuesBuffer.data() + 2 * maxStates,
+        1, stateValues.data() + 2 * maxStates, 1);
     }
 
     typedef std::map<StateIndex, size_t> StateMapT;
