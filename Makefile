@@ -8,7 +8,7 @@ CPPFLAGS += -I${MKLROOT}/include
 CXXFLAGS += -g
 
 # Flags passed to the C++ compiler.
-CXXFLAGS += -Wall -Wextra -pthread -std=c++11
+CXXFLAGS += -Wall -Wextra -pthread -std=c++14
 CXXFLAGS += -DMKL_DIRECT_CALL_SEQ
 
 #LDFLAGS += -L ~/lib

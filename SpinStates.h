@@ -2,14 +2,14 @@
 #define SpinStates_h
 
 #include <map>
-#include <tuple>
+#include <array>
 #include <vector>
 
 #include "blas_local.h"
 template <typename index_type, typename value_type>
 class SpinStates {
   public:
-    typedef std::tuple<index_type, index_type, index_type> StateIndex;
+    typedef std::array<index_type, 3> StateIndex;
     typedef std::complex<value_type> cvalue_type;
 
     //struct StateIndex {
@@ -22,7 +22,7 @@ class SpinStates {
 
     SpinStates() :
       curStates(0),
-      maxStates(1024),
+      maxStates(4),
       stateValues(maxStates * 3),
       stateValuesBuffer(maxStates * 3)
     {
@@ -34,11 +34,19 @@ class SpinStates {
 
     SpinState getState(StateIndex index) {
       SpinState ret;
-      size_t offset = stateMap[index];
 
-      ret.fPlus = stateValues[offset]; 
-      ret.fMinus = stateValues[offset + maxStates]; 
-      ret.z = stateValues[offset + 2 * maxStates]; 
+      typename StateMapT::const_iterator it = stateMap.find(index);
+      
+      if(stateMap.end() == it) {
+        ret = {0,0,0}; 
+      }
+      else {
+        size_t offset = it->second;
+
+        ret.fPlus = stateValues[offset]; 
+        ret.fMinus = stateValues[offset + maxStates]; 
+        ret.z = stateValues[offset + 2 * maxStates]; 
+      }
 
       return ret;
     }
@@ -136,6 +144,108 @@ class SpinStates {
       protected:
         cvalue_type relaxationTerm[4];
     };
+    
+    class Spoiling {
+      public:
+        Spoiling(StateIndex spoilGrad) :
+          spoilGrad(spoilGrad) {}
+
+        void spoil(SpinStates<index_type, value_type> *states) {
+          const unsigned int curStatesLocal = states->curStates;
+          const unsigned int maxStatesLocal = states->maxStates;
+          const unsigned int maxStatesBuffer = maxStatesLocal;
+
+          BLAS::copy(curStatesLocal,
+            states->stateValues.data(), 1,
+            states->stateValuesBuffer.data(), 1);
+          
+          BLAS::copy(curStatesLocal,
+            states->stateValues.data() + maxStatesLocal, 1,
+            states->stateValuesBuffer.data() + maxStatesLocal, 1);
+
+          memset(states->stateValues.data(), 0,
+            curStatesLocal * sizeof(cvalue_type));
+          
+          memset(states->stateValues.data() + maxStatesLocal, 0,
+            curStatesLocal * sizeof(cvalue_type));
+         
+          typename StateMapT::const_iterator mapIt = states->stateMap.begin();
+
+          // TODO: consider whether emplace() removes need for copy
+          StateMapT newStateMap = states->stateMap;
+
+          for(; mapIt != states->stateMap.end(); mapIt++) {
+            StateIndex curIndex = mapIt->first;
+            size_t curOffset = mapIt->second;
+ 
+            StateIndex curfPlusIndex;
+            StateIndex curfMinusIndex;
+
+            for(unsigned int i = 0; i < 3; i++) {
+              curfPlusIndex[i] = curIndex[i] + spoilGrad[i];
+              curfMinusIndex[i] = curIndex[i] - spoilGrad[i];
+            }
+
+            {
+              typename StateMapT::iterator fPlusIt =
+                newStateMap.find(curfPlusIndex);
+
+              // if the element where fPlus is landing doesn't yet exist,
+              // make it
+              if(newStateMap.end() == fPlusIt) {
+                // if the state list is full, expand it
+                if(states->curStates == states->maxStates) {
+                  states->expandStates(); 
+                }
+
+                newStateMap[curfPlusIndex] = states->curStates;
+
+                states->stateValues[states->curStates] =
+                  states->stateValuesBuffer[curOffset];
+
+                states->curStates++;
+              }
+              // if the element does exist
+              else {
+                states->stateValues[fPlusIt->second] = 
+                  states->stateValuesBuffer[curOffset];
+              }
+            }
+            
+            {
+              typename StateMapT::iterator fMinusIt =
+                newStateMap.find(curfMinusIndex);
+
+              // if the element where fMinus is landing doesn't yet exist,
+              // make it
+              if(newStateMap.end() == fMinusIt) {
+                // if the state list is full, expand it
+                if(states->curStates == states->maxStates) {
+                  states->expandStates(); 
+                }
+
+                newStateMap[curfMinusIndex] = states->curStates;
+
+                states->stateValues[states->curStates + states->maxStates] = 
+                  states->stateValuesBuffer[curOffset + maxStatesBuffer];
+
+                states->curStates++;
+              }
+              // if the element does exist
+              else {
+                states->stateValues[fMinusIt->second + states->maxStates] = 
+                  states->stateValuesBuffer[curOffset + maxStatesBuffer];
+              }
+            }
+          }
+
+          states->stateMap = newStateMap;
+
+        }
+
+      protected:
+        StateIndex spoilGrad;
+    };
 
   protected:
     void insertState(const StateIndex &index, const SpinState &state) {
@@ -172,9 +282,9 @@ class SpinStates {
       stateValuesBuffer.resize(newMaxStates * 3);
     }
 
-    typedef std::map<StateIndex, size_t> StateMap;
+    typedef std::map<StateIndex, size_t> StateMapT;
 
-    StateMap stateMap;
+    StateMapT stateMap;
     size_t curStates;
     size_t maxStates;
     
