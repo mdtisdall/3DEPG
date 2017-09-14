@@ -6,11 +6,12 @@
 #include <vector>
 
 #include "blas_local.h"
-template <typename index_type, typename value_type>
+template <typename index_type, typename _value_type>
 class SpinStates {
   public:
-    typedef std::array<index_type, 3> StateIndex;
+    typedef _value_type value_type;
     typedef std::complex<value_type> cvalue_type;
+    typedef std::array<index_type, 3> StateIndex;
 
     //struct StateIndex {
     //  index_type z, y, x;
@@ -85,7 +86,7 @@ class SpinStates {
           opMatrixTrans[8] = cosAlpha;
         }
 
-        void excite(SpinStates<index_type, value_type> *states) {
+        void operator()(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
           const unsigned int maxStatesLocal = states->maxStates;
           BLAS::gemm(
@@ -121,7 +122,7 @@ class SpinStates {
           relaxationTerm[3] = value_type(1) - relaxationTerm[2];
         }
 
-        void relax(SpinStates<index_type, value_type> *states) {
+        void operator()(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
           const unsigned int maxStatesLocal = states->maxStates;
 
@@ -151,7 +152,7 @@ class SpinStates {
           spoilGrad(spoilGrad),
           trimThreshold(trimThreshold){}
 
-        void spoil(SpinStates<index_type, value_type> *states) {
+        void operator()(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
           const unsigned int maxStatesLocal = states->maxStates;
           const unsigned int maxStatesBuffer = maxStatesLocal;
