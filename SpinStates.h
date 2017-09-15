@@ -51,6 +51,10 @@ class SpinStates {
 
       return ret;
     }
+
+    size_t size() {
+      return curStates; 
+    }
     
     class Excitation {
       public:
@@ -139,7 +143,11 @@ class SpinStates {
             relaxationTerm + 2,
             states->stateValues.data() + 2 * maxStatesLocal, 1);
 
-          states->stateValues[2*maxStatesLocal] += relaxationTerm[3];
+          StateIndex originIndex({0,0,0});
+          size_t originOffset = states->stateMap[originIndex];
+
+          states->stateValues[originOffset + 2*maxStatesLocal] +=
+            relaxationTerm[3];
         }
 
       protected:

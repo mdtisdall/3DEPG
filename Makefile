@@ -5,7 +5,8 @@ MKLROOT = /opt/intel/mkl
 CPPFLAGS += -DMKL_ILP64 -m64 
 CPPFLAGS += -I${MKLROOT}/include 
 
-CXXFLAGS += -g
+#CXXFLAGS += -g
+CXXFLAGS += -O3
 
 # Flags passed to the C++ compiler.
 CXXFLAGS += -Wall -Wextra -pthread -std=c++14

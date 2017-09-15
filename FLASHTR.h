@@ -12,9 +12,11 @@ class FLASHTR {
       const typename SpinStates::StateIndex spoilingGrad,
       const value_type tr,
       const value_type t1,
-      const value_type t2) :
+      const value_type t2,
+      const value_type threshold = value_type(0)
+      ) :
       excitation(flipAngle, flipPhase),
-      spoiling(spoilingGrad),
+      spoiling(spoilingGrad, threshold),
       relaxation(tr, t1, t2),
       invPhase(std::polar(value_type(1.0),
         -flipPhase + value_type(M_PI) / value_type(2)))
