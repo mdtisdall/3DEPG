@@ -82,7 +82,8 @@ void test2() {
   
   { 
     std::vector<SpinStatesT::cvalue_type> measuredSignals;
-    mprage(&spinStates, &measuredSignals); 
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
     
     std::cout << "MPRAGE signal length: " << measuredSignals.size()
       << std::endl;
@@ -97,6 +98,11 @@ void test2() {
       std::vector<SpinStatesT::cvalue_type>
       >::write(
       &measuredSignals, "test_constant_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_constant_phases.dat");
   }
 }
 
@@ -131,7 +137,8 @@ void test3() {
   
   { 
     std::vector<SpinStatesT::cvalue_type> measuredSignals;
-    mprage(&spinStates, &measuredSignals); 
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
     
     std::cout << "MPRAGE signal length: " << measuredSignals.size()
       << std::endl;
@@ -146,6 +153,11 @@ void test3() {
       std::vector<SpinStatesT::cvalue_type>
       >::write(
       &measuredSignals, "test_hexagonal_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_phases.dat");
   }
 }
 
@@ -179,7 +191,8 @@ void test4() {
   
   { 
     std::vector<SpinStatesT::cvalue_type> measuredSignals;
-    mprage(&spinStates, &measuredSignals); 
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
     
     std::cout << "MPRAGE signal length: " << measuredSignals.size()
       << std::endl;
@@ -194,6 +207,11 @@ void test4() {
       std::vector<SpinStatesT::cvalue_type>
       >::write(
       &measuredSignals, "test_constant_rfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_constant_rfspoil_phases.dat");
   }
 }
 
@@ -228,7 +246,8 @@ void test5() {
   
   { 
     std::vector<SpinStatesT::cvalue_type> measuredSignals;
-    mprage(&spinStates, &measuredSignals); 
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
     
     std::cout << "MPRAGE signal length: " << measuredSignals.size()
       << std::endl;
@@ -243,6 +262,11 @@ void test5() {
       std::vector<SpinStatesT::cvalue_type>
       >::write(
       &measuredSignals, "test_hexagonal_rfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_rfspoil_phases.dat");
   }
 }
 
@@ -279,7 +303,8 @@ void test6() {
   
   { 
     std::vector<SpinStatesT::cvalue_type> measuredSignals;
-    mprage(&spinStates, &measuredSignals); 
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
     
     std::cout << "MPRAGE signal length: " << measuredSignals.size()
       << std::endl;
@@ -294,6 +319,11 @@ void test6() {
       std::vector<SpinStatesT::cvalue_type>
       >::write(
       &measuredSignals, "test_hexagonal_resetrfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_resetrfspoil_phases.dat");
   }
 }
 

@@ -5,22 +5,25 @@ template <typename value_type>
 class ExponentialRFSpoilingController {
   public:
     ExponentialRFSpoilingController(const value_type increment):
-      increment(increment),
-      curIndex(0)
+      baseIncrement(increment),
+      curIncrement(0),
+      curPhase(0)
     {}
 
     value_type nextPhase() {
-      value_type ret = increment * value_type(curIndex + 1) *
-        value_type(curIndex) * value_type(0.5);
-
-      curIndex++;
+      value_type ret = curPhase;
+      curIncrement += baseIncrement;
+      curIncrement = fmod(curIncrement, value_type(2) * value_type(M_PI));
+      curPhase += curIncrement;
+      curPhase = fmod(curPhase, value_type(2) * value_type(M_PI));
 
       return ret;
     }
 
   protected:
-    value_type increment;
-    size_t curIndex;
+    value_type baseIncrement;
+    value_type curIncrement;
+    value_type curPhase;
 };
 
 #endif

@@ -40,15 +40,22 @@ class MPRAGE {
 
     void operator()(
       SpinStates *states,
-      std::vector<typename SpinStates::cvalue_type> *output) {
+      std::vector<typename SpinStates::cvalue_type> *output,
+      std::vector<value_type> *rfPhases = NULL) {
       for(unsigned int outerStep = 0; outerStep < outerSteps; outerStep++) {
         inversion(states);
         td1Relaxation(states);
 
         for(unsigned int innerStep = 0; innerStep < innerSteps; innerStep++) {
+          value_type nextRFPhase = rfSpoilingController.nextPhase();
+          
+          if(NULL != rfPhases) {
+            rfPhases->push_back(nextRFPhase);
+          }
+
           output->push_back(
             FLASHTR<SpinStates>(
-              flipAngle, rfSpoilingController.nextPhase(),
+              flipAngle, nextRFPhase,
               gradSpoilingController.nextGrad(),
               flashTR, t1, t2, threshold)(states)
           );
