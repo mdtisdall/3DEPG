@@ -9,6 +9,7 @@
 #include "ConstantRFSpoilingController.h"
 #include "ExponentialRFSpoilingController.h"
 #include "ResettingExponentialRFSpoilingController.h"
+#include "RandomRFSpoilingController.h"
 
 #include "BinaryFile.h"
 
@@ -25,7 +26,7 @@ void test1() {
   SpinStatesT spinStates;
 
   FLASHTR<SpinStatesT> flashTR(
-    value_type(7) * value_type(M_PI) / value_type(180),
+    value_type(11) * value_type(M_PI) / value_type(180),
     0,
     SpinStatesT::StateIndex({1,0,0}),
     10,
@@ -67,14 +68,14 @@ void test2() {
     GradSpoilingController,
     RFSpoilingController
   > mprage(
-    value_type(7) * value_type(M_PI) / value_type(180),
-    500,
-    1200,
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
     176,
     256,
     6.12,
     1000,
-    100,
+    250,
     GradSpoilingController(),
     RFSpoilingController(),
     1e-4);
@@ -122,14 +123,14 @@ void test3() {
     GradSpoilingController,
     RFSpoilingController
   > mprage(
-    value_type(7) * value_type(M_PI) / value_type(180),
-    500,
-    1200,
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
     176,
     256,
     6.12,
     1000,
-    100,
+    250,
     GradSpoilingController(),
     RFSpoilingController(),
     1e-4);
@@ -176,14 +177,14 @@ void test4() {
     GradSpoilingController,
     RFSpoilingController
   > mprage(
-    value_type(7) * value_type(M_PI) / value_type(180),
-    500,
-    1200,
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
     176,
     256,
     6.12,
     1000,
-    100,
+    250,
     GradSpoilingController(),
     RFSpoilingController(value_type(50) * value_type(M_PI) / value_type(180)),
     1e-4);
@@ -231,14 +232,14 @@ void test5() {
     GradSpoilingController,
     RFSpoilingController
   > mprage(
-    value_type(7) * value_type(M_PI) / value_type(180),
-    500,
-    1200,
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
     176,
     256,
     6.12,
     1000,
-    100,
+    250,
     GradSpoilingController(),
     RFSpoilingController(value_type(50) * value_type(M_PI) / value_type(180)),
     1e-4);
@@ -286,14 +287,14 @@ void test6() {
     GradSpoilingController,
     RFSpoilingController
   > mprage(
-    value_type(7) * value_type(M_PI) / value_type(180),
-    500,
-    1200,
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
     176,
     256,
     6.12,
     1000,
-    100,
+    250,
     GradSpoilingController(),
     RFSpoilingController(
       value_type(50) * value_type(M_PI) / value_type(180),
@@ -327,14 +328,185 @@ void test6() {
   }
 }
 
+void test7() {
+  typedef SpinStates<long, value_type> SpinStatesT;
+  SpinStatesT spinStates;
+
+
+  typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
+    GradSpoilingController;
+
+  typedef RandomRFSpoilingController<SpinStatesT::value_type,
+          RandomGenerators::niederreiter>
+    RFSpoilingController;
+
+  MPRAGE<
+    SpinStatesT,
+    GradSpoilingController,
+    RFSpoilingController
+  > mprage(
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
+    176,
+    256,
+    6.12,
+    1000,
+    250,
+    GradSpoilingController(),
+    RFSpoilingController(),
+    1e-4);
+
+  
+  { 
+    std::vector<SpinStatesT::cvalue_type> measuredSignals;
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
+    
+    std::cout << "MPRAGE signal length: " << measuredSignals.size()
+      << std::endl;
+    
+    std::cout << "MPRAGE end signal: " << measuredSignals.back()
+      << std::endl;
+    
+    std::cout << "MPRAGE end spin states: " << spinStates.size()
+      << std::endl;
+
+    BinaryFile<
+      std::vector<SpinStatesT::cvalue_type>
+      >::write(
+      &measuredSignals, "test_hexagonal_niedrfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_niedrfspoil_phases.dat");
+  }
+}
+
+void test8() {
+  typedef SpinStates<long, value_type> SpinStatesT;
+  SpinStatesT spinStates;
+
+
+  typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
+    GradSpoilingController;
+
+  typedef RandomRFSpoilingController<SpinStatesT::value_type,
+          RandomGenerators::sobol>
+    RFSpoilingController;
+
+  MPRAGE<
+    SpinStatesT,
+    GradSpoilingController,
+    RFSpoilingController
+  > mprage(
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
+    176,
+    256,
+    6.12,
+    1000,
+    250,
+    GradSpoilingController(),
+    RFSpoilingController(),
+    1e-4);
+
+  
+  { 
+    std::vector<SpinStatesT::cvalue_type> measuredSignals;
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
+    
+    std::cout << "MPRAGE signal length: " << measuredSignals.size()
+      << std::endl;
+    
+    std::cout << "MPRAGE end signal: " << measuredSignals.back()
+      << std::endl;
+    
+    std::cout << "MPRAGE end spin states: " << spinStates.size()
+      << std::endl;
+
+    BinaryFile<
+      std::vector<SpinStatesT::cvalue_type>
+      >::write(
+      &measuredSignals, "test_hexagonal_sobolrfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_sobolrfspoil_phases.dat");
+  }
+}
+
+void test9() {
+  typedef SpinStates<long, value_type> SpinStatesT;
+  SpinStatesT spinStates;
+
+
+  typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
+    GradSpoilingController;
+
+  typedef RandomRFSpoilingController<SpinStatesT::value_type,
+          RandomGenerators::pseudorandom>
+    RFSpoilingController;
+
+  MPRAGE<
+    SpinStatesT,
+    GradSpoilingController,
+    RFSpoilingController
+  > mprage(
+    value_type(11) * value_type(M_PI) / value_type(180),
+    330,
+    830,
+    176,
+    256,
+    6.12,
+    1000,
+    250,
+    GradSpoilingController(),
+    RFSpoilingController(),
+    1e-4);
+
+  
+  { 
+    std::vector<SpinStatesT::cvalue_type> measuredSignals;
+    std::vector<value_type> rfPhases;
+    mprage(&spinStates, &measuredSignals, &rfPhases); 
+    
+    std::cout << "MPRAGE signal length: " << measuredSignals.size()
+      << std::endl;
+    
+    std::cout << "MPRAGE end signal: " << measuredSignals.back()
+      << std::endl;
+    
+    std::cout << "MPRAGE end spin states: " << spinStates.size()
+      << std::endl;
+
+    BinaryFile<
+      std::vector<SpinStatesT::cvalue_type>
+      >::write(
+      &measuredSignals, "test_hexagonal_randomrfspoil_output.dat");
+
+    BinaryFile<
+      std::vector<value_type>
+      >::write(
+      &rfPhases, "test_hexagonal_randomrfspoil_phases.dat");
+  }
+}
+
 int main() {
 
-  test1();
-  test2();
-  test3();
-  test4();
-  test5();
-  test6();
+  //test1();
+  //test2();
+  //test3();
+  //test4();
+  //test5();
+  //test6();
+  //test7();
+  //test8();
+  test9();
 
   return 0;
 }

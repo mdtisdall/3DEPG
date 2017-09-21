@@ -201,25 +201,28 @@ class SpinStates {
                 newStateMap.find(curfPlusIndex);
 
               // if the element where fPlus is landing doesn't yet exist,
-              // make it
               if(newStateMap.end() == fPlusIt) {
-                // if the state list is full, expand it
-                if(states->curStates == states->maxStates) {
-                  states->expandStates(); 
+                // and the new value is above the trim threshold, make it
+                if(std::abs(states->stateValuesBuffer[curOffset]) >=
+                 trimThreshold) {
+                  // if the state list is full, expand it
+                  if(states->curStates == states->maxStates) {
+                    states->expandStates(); 
+                  }
+
+                  newStateMap[curfPlusIndex] = states->curStates;
+
+                  states->stateValues[states->curStates] =
+                    states->stateValuesBuffer[curOffset];
+                  
+                  states->stateValues[states->curStates + states->maxStates]
+                    = cvalue_type(0);
+                  
+                  states->stateValues[states->curStates + 2 * states->maxStates]
+                    = cvalue_type(0);
+
+                  states->curStates++;
                 }
-
-                newStateMap[curfPlusIndex] = states->curStates;
-
-                states->stateValues[states->curStates] =
-                  states->stateValuesBuffer[curOffset];
-                
-                states->stateValues[states->curStates + states->maxStates]
-                  = cvalue_type(0);
-                
-                states->stateValues[states->curStates + 2 * states->maxStates]
-                  = cvalue_type(0);
-
-                states->curStates++;
               }
               // if the element does exist
               else {
@@ -233,25 +236,31 @@ class SpinStates {
                 newStateMap.find(curfMinusIndex);
 
               // if the element where fMinus is landing doesn't yet exist,
-              // make it
               if(newStateMap.end() == fMinusIt) {
-                // if the state list is full, expand it
-                if(states->curStates == states->maxStates) {
-                  states->expandStates(); 
+                // and the new value is above the trim threshold, make it
+                if(
+                 std::abs(
+                   states->stateValuesBuffer[curOffset + maxStatesBuffer]
+                 ) >=
+                 trimThreshold) {
+                  // if the state list is full, expand it
+                  if(states->curStates == states->maxStates) {
+                    states->expandStates(); 
+                  }
+
+                  newStateMap[curfMinusIndex] = states->curStates;
+                  
+                  states->stateValues[states->curStates]
+                    = cvalue_type(0);
+
+                  states->stateValues[states->curStates + states->maxStates] = 
+                    states->stateValuesBuffer[curOffset + maxStatesBuffer];
+                  
+                  states->stateValues[states->curStates + 2 * states->maxStates]
+                    = cvalue_type(0);
+
+                  states->curStates++;
                 }
-
-                newStateMap[curfMinusIndex] = states->curStates;
-                
-                states->stateValues[states->curStates]
-                  = cvalue_type(0);
-
-                states->stateValues[states->curStates + states->maxStates] = 
-                  states->stateValuesBuffer[curOffset + maxStatesBuffer];
-                
-                states->stateValues[states->curStates + 2 * states->maxStates]
-                  = cvalue_type(0);
-
-                states->curStates++;
               }
               // if the element does exist
               else {
@@ -263,7 +272,7 @@ class SpinStates {
 
           states->stateMap = newStateMap;
 
-          states->trimStates(trimThreshold);
+          //states->trimStates(trimThreshold);
         }
 
       protected:
