@@ -28,7 +28,7 @@ void test1() {
   FLASHTR<SpinStatesT> flashTR(
     value_type(11) * value_type(M_PI) / value_type(180),
     0,
-    SpinStatesT::StateIndex({1,0,0}),
+    SpinStatesT::StateIndex({{1,0,0}}),
     10,
     1000,
     100);
@@ -41,7 +41,7 @@ void test1() {
     
     std::cout << "after FLASH TR:" << std::endl;
     for(int i = -1; i <= 1; i++) {
-      SpinStatesT::StateIndex curIndex = {i,0,0};
+      SpinStatesT::StateIndex curIndex({{i,0,0}});
       SpinStatesT::SpinState curState = spinStates.getState(curIndex);
      
       std::cout << "\t(" << curIndex[0] << ", "
@@ -503,10 +503,9 @@ int main() {
   //test3();
   //test4();
   //test5();
-  //test6();
+  test6();
   //test7();
   //test8();
-  test9();
-
-  return 0;
+  //test9();
 }
+

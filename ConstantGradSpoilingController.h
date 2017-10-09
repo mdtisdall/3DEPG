@@ -5,7 +5,7 @@ template <typename GradType>
 class ConstantGradSpoilingController {
   public:
     GradType nextGrad() {
-      return GradType({0,0,1}); 
+      return GradType({{0,0,1}}); 
     }
 };
 

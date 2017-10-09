@@ -10,12 +10,12 @@ class HexagonalGradSpoilingController {
       gradSchedule(),
       curIndex(0)
     {
-      gradSchedule[0] = GradType({1, 0, 1});
-      gradSchedule[1] = GradType({0, 1, 1});
-      gradSchedule[2] = GradType({-1, 1, 1});
-      gradSchedule[3] = GradType({-1, 0, 1});
-      gradSchedule[4] = GradType({0, -1, 1});
-      gradSchedule[5] = GradType({1, -1, 1});
+      gradSchedule[0] = GradType({{1,  0, 1}});
+      gradSchedule[1] = GradType({{0,  1, 1}});
+      gradSchedule[2] = GradType({{-1, 1, 1}});
+      gradSchedule[3] = GradType({{-1, 0, 1}});
+      gradSchedule[4] = GradType({{0, -1, 1}});
+      gradSchedule[5] = GradType({{1, -1, 1}});
     }
 
     GradType nextGrad() {

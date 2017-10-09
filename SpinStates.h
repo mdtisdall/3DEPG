@@ -6,56 +6,58 @@
 #include <vector>
 
 #include "blas_local.h"
+
+#include "MKLAllocator/MKLAllocator.h"
+
 template <typename index_type, typename _value_type>
 class SpinStates {
   public:
     typedef _value_type value_type;
     typedef std::complex<value_type> cvalue_type;
+  
     typedef std::array<index_type, 3> StateIndex;
 
-    //struct StateIndex {
-    //  index_type z, y, x;
-    //};
-   
+  protected:
+
+    typedef std::vector<cvalue_type, mkl_allocator<cvalue_type> > BufferVec;
+    typedef std::unique_ptr<BufferVec> BufferPtr;
+
+  public:
+
     struct SpinState {
       cvalue_type fPlus, fMinus, z; 
-    };
+    }; 
 
     SpinStates() :
-      curStates(0),
-      maxStates(4),
-      stateValues(maxStates * 3),
-      stateValuesBuffer(maxStates * 3)
+      curRadii({{1,1,1}}),
+      curSideLengths({{1,1,1}}),
+      curStates(curSideLengths[0] * curSideLengths[1] * curSideLengths[2]),
+      frontBuffer(std::make_unique<BufferVec>(curStates * 3)),
+      backBuffer(std::make_unique<BufferVec>(curStates * 3))
     {
-      SpinState initState = {0, 0, 1};
-      StateIndex initIndex = {0, 0, 0}; 
-
-      insertState(initIndex, initState);
+      //initialize signal at origin
+      (*frontBuffer)[0] = 0;
+      (*frontBuffer)[1] = 0;
+      (*frontBuffer)[2] = 1;
     }
 
     SpinState getState(StateIndex index) {
       SpinState ret;
 
-      typename StateMapT::const_iterator it = stateMap.find(index);
-      
-      if(stateMap.end() == it) {
-        ret = {0,0,0}; 
-      }
-      else {
-        size_t offset = it->second;
+      size_t offset = stateIndexToOffset(index);
 
-        ret.fPlus = stateValues[offset]; 
-        ret.fMinus = stateValues[offset + maxStates]; 
-        ret.z = stateValues[offset + 2 * maxStates]; 
-      }
+      ret.fPlus = (*frontBuffer)[offset]; 
+      ret.fMinus = (*frontBuffer)[offset + curStates]; 
+      ret.z = (*frontBuffer)[offset + 2 * curStates]; 
 
       return ret;
     }
+   
 
-    size_t size() {
-      return curStates; 
+    size_t size() const {
+      return curStates;
     }
-    
+
     class Excitation {
       public:
         Excitation(value_type flipAngle, value_type phase) :
@@ -92,31 +94,21 @@ class SpinStates {
 
         void operator()(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
-          const unsigned int maxStatesLocal = states->maxStates;
           BLAS::gemm(
             BLAS::ColMajor, BLAS::NoTrans, BLAS::NoTrans,
             curStatesLocal, 3, 3,
-            cvalue_type(1.0), states->stateValues.data(), maxStatesLocal,
+            cvalue_type(1.0), states->frontBuffer->data(), curStatesLocal,
             opMatrixTrans.data(), 3,
-            cvalue_type(0), states->stateValuesBuffer.data(), maxStatesLocal);
-
-          // move data back from the temporary buffer
-          // this could be eliminated with proper double-buffering...
-          BLAS::copy(curStatesLocal, states->stateValuesBuffer.data(),
-            1, states->stateValues.data(), 1);
-          BLAS::copy(
-            curStatesLocal, states->stateValuesBuffer.data() + maxStatesLocal,
-            1, states->stateValues.data() + maxStatesLocal, 1);
-          BLAS::copy(
-            curStatesLocal,
-            states->stateValuesBuffer.data() + 2 * maxStatesLocal,
-            1, states->stateValues.data() + 2 * maxStatesLocal, 1);
+            cvalue_type(0), states->backBuffer->data(), curStatesLocal);
+      
+          // swap the front and back buffers to our updates are visible
+          std::swap(states->frontBuffer, states->backBuffer); 
         }
 
       protected:
         std::vector< std::complex<value_type> > opMatrixTrans;
     };
-
+    
     class Relaxation {
       public:
         Relaxation(value_type duration, value_type t1, value_type t2Star) {
@@ -128,25 +120,24 @@ class SpinStates {
 
         void operator()(SpinStates<index_type, value_type> *states) {
           const unsigned int curStatesLocal = states->curStates;
-          const unsigned int maxStatesLocal = states->maxStates;
 
           BLAS::scal(
-            curStatesLocal, relaxationTerm, states->stateValues.data(), 1);
+            curStatesLocal, relaxationTerm, states->frontBuffer->data(), 1);
           
           BLAS::scal(
             curStatesLocal,
             relaxationTerm + 1,
-            states->stateValues.data() + maxStatesLocal, 1);
+            states->frontBuffer->data() + curStatesLocal, 1);
           
           BLAS::scal(
             curStatesLocal,
             relaxationTerm + 2,
-            states->stateValues.data() + 2 * maxStatesLocal, 1);
+            states->frontBuffer->data() + 2 * curStatesLocal, 1);
 
-          StateIndex originIndex({0,0,0});
-          size_t originOffset = states->stateMap[originIndex];
+          StateIndex originIndex({{0,0,0}});
+          size_t originOffset = states->stateIndexToOffset(originIndex);
 
-          states->stateValues[originOffset + 2*maxStatesLocal] +=
+          states->frontBuffer->data()[originOffset + 2 * curStatesLocal] +=
             relaxationTerm[3];
         }
 
@@ -154,214 +145,251 @@ class SpinStates {
         cvalue_type relaxationTerm[4];
     };
     
+    
     class Spoiling {
       public:
         Spoiling(StateIndex spoilGrad, value_type trimThreshold = 0.0) :
           spoilGrad(spoilGrad),
           trimThreshold(trimThreshold){}
 
-        void operator()(SpinStates<index_type, value_type> *states) {
+        void operator()(SpinStates<index_type, value_type> *states)
+        {
           const unsigned int curStatesLocal = states->curStates;
-          const unsigned int maxStatesLocal = states->maxStates;
-          const unsigned int maxStatesBuffer = maxStatesLocal;
-
-          BLAS::copy(curStatesLocal,
-            states->stateValues.data(), 1,
-            states->stateValuesBuffer.data(), 1);
-          
-          BLAS::copy(curStatesLocal,
-            states->stateValues.data() + maxStatesLocal, 1,
-            states->stateValuesBuffer.data() + maxStatesLocal, 1);
-
-          memset(states->stateValues.data(), 0,
-            curStatesLocal * sizeof(cvalue_type));
-          
-          memset(states->stateValues.data() + maxStatesLocal, 0,
-            curStatesLocal * sizeof(cvalue_type));
+     
+          // zero out the fPlus and fMinus states in the back buffer
+          std::fill(
+            states->backBuffer->begin(),
+            states->backBuffer->begin() + 2 * curStatesLocal, 0);
          
-          typename StateMapT::const_iterator mapIt = states->stateMap.begin();
+          // copy the z components over since those don't shift with spoiling
+          BLAS::copy(curStatesLocal,
+            states->frontBuffer->data() + 2 * curStatesLocal, 1,
+            states->backBuffer->data() + 2 * curStatesLocal, 1);
 
-          // TODO: consider whether emplace() removes need for copy
-          StateMapT newStateMap = states->stateMap;
+          // iterate over each position in the front buffer
+          size_t curOffset = 0;
+          StateIndex curRadii = states->curRadii;
+          StateIndex curIndex =
+            StateIndex({{
+              1 - curRadii[0],
+              1 - curRadii[1],
+              1 - curRadii[2]
+            }});
 
-          for(; mapIt != states->stateMap.end(); mapIt++) {
-            StateIndex curIndex = mapIt->first;
-            size_t curOffset = mapIt->second;
- 
-            StateIndex curfPlusIndex;
-            StateIndex curfMinusIndex;
+          // we'll keep extra indicies for the backBuffer in case
+          // we need to expand it
+          StateIndex backRadii = states->curRadii;
+          StateIndex backSideLengths = states->curSideLengths;
+          size_t backStates = states->curStates;
 
-            for(unsigned int i = 0; i < 3; i++) {
-              curfPlusIndex[i] = curIndex[i] + spoilGrad[i];
-              curfMinusIndex[i] = curIndex[i] - spoilGrad[i];
-            }
-
+          for(;curIndex[0] < curRadii[0]; curIndex[0]++)
+          {
+            for(
+              curIndex[1] = 1 - curRadii[1];
+              curIndex[1] < curRadii[1];
+              curIndex[1]++)
             {
-              typename StateMapT::iterator fPlusIt =
-                newStateMap.find(curfPlusIndex);
 
-              // if the element where fPlus is landing doesn't yet exist,
-              if(newStateMap.end() == fPlusIt) {
-                // and the new value is above the trim threshold, make it
-                if(std::abs(states->stateValuesBuffer[curOffset]) >=
-                 trimThreshold) {
-                  // if the state list is full, expand it
-                  if(states->curStates == states->maxStates) {
-                    states->expandStates(); 
+              for(
+                curIndex[2] = 1 - curRadii[2];
+                curIndex[2] < curRadii[2];
+                curIndex[2]++, curOffset++)
+              {
+                StateIndex curfPlusIndex;
+                StateIndex curfMinusIndex;
+
+                // compute the destination states for the components 
+                for(unsigned int i = 0; i < 3; i++)
+                {
+                  curfPlusIndex[i] = curIndex[i] + spoilGrad[i];
+                  curfMinusIndex[i] = curIndex[i] - spoilGrad[i];
+                }
+                
+                // move fPlus component to destination state if it's
+                // larger than the trim threshold.
+                if(std::abs(states->frontBuffer->data()[curOffset]) >=
+                    trimThreshold)
+                {
+                  bool needsExpansion = false;
+                  StateIndex neededRadii = backRadii;
+
+                  for(unsigned int i = 0; i < 3; i++)
+                  {
+                    while(std::abs(curfPlusIndex[i]) >= neededRadii[i])
+                    {
+                      neededRadii[i] *= 2;
+                      needsExpansion = true;
+                    }
                   }
 
-                  newStateMap[curfPlusIndex] = states->curStates;
+                  if(needsExpansion) {
+                    states->expandBackBuffer(
+                      neededRadii, &backRadii, &backSideLengths, &backStates);
+                  }
 
-                  states->stateValues[states->curStates] =
-                    states->stateValuesBuffer[curOffset];
+                  size_t destOffset =
+                    stateIndexToOffset(
+                      curfPlusIndex, backRadii, backSideLengths);
                   
-                  states->stateValues[states->curStates + states->maxStates]
-                    = cvalue_type(0);
-                  
-                  states->stateValues[states->curStates + 2 * states->maxStates]
-                    = cvalue_type(0);
-
-                  states->curStates++;
+                  states->backBuffer->data()[destOffset] = 
+                    states->frontBuffer->data()[curOffset];
                 }
-              }
-              // if the element does exist
-              else {
-                states->stateValues[fPlusIt->second] = 
-                  states->stateValuesBuffer[curOffset];
-              }
-            }
-            
-            {
-              typename StateMapT::iterator fMinusIt =
-                newStateMap.find(curfMinusIndex);
 
-              // if the element where fMinus is landing doesn't yet exist,
-              if(newStateMap.end() == fMinusIt) {
-                // and the new value is above the trim threshold, make it
+                // move fMinus component to destination state if it's
+                // larger than the trim threshold.
                 if(
-                 std::abs(
-                   states->stateValuesBuffer[curOffset + maxStatesBuffer]
-                 ) >=
-                 trimThreshold) {
-                  // if the state list is full, expand it
-                  if(states->curStates == states->maxStates) {
-                    states->expandStates(); 
+                  std::abs(
+                    states->frontBuffer->data()[curOffset + curStatesLocal]) >=
+                    trimThreshold)
+                {
+                  bool needsExpansion = false;
+                  StateIndex neededRadii = backRadii;
+
+                  for(unsigned int i = 0; i < 3; i++)
+                  {
+                    while(std::abs(curfMinusIndex[i]) >= neededRadii[i])
+                    {
+                      neededRadii[i] *= 2;
+                      needsExpansion = true;
+                    }
                   }
 
-                  newStateMap[curfMinusIndex] = states->curStates;
-                  
-                  states->stateValues[states->curStates]
-                    = cvalue_type(0);
+                  if(needsExpansion) {
+                    states->expandBackBuffer(
+                      neededRadii, &backRadii, &backSideLengths, &backStates);
+                  }
 
-                  states->stateValues[states->curStates + states->maxStates] = 
-                    states->stateValuesBuffer[curOffset + maxStatesBuffer];
+                  size_t destOffset =
+                    stateIndexToOffset(
+                      curfMinusIndex, backRadii, backSideLengths);
                   
-                  states->stateValues[states->curStates + 2 * states->maxStates]
-                    = cvalue_type(0);
-
-                  states->curStates++;
+                  states->backBuffer->data()[destOffset + backStates] = 
+                    states->frontBuffer->data()[curOffset + curStatesLocal];
                 }
-              }
-              // if the element does exist
-              else {
-                states->stateValues[fMinusIt->second + states->maxStates] = 
-                  states->stateValuesBuffer[curOffset + maxStatesBuffer];
               }
             }
           }
 
-          states->stateMap = newStateMap;
+          // if we expanded the back buffer, we need to make a new front
+          // buffer before we do the swap
+          if(curStatesLocal != backStates){
+            states->curStates = backStates;
+            states->curSideLengths = backSideLengths;
+            states->curRadii = backRadii;
 
-          //states->trimStates(trimThreshold);
+            BufferPtr newFrontBuffer(
+              std::make_unique<BufferVec>(states->curStates * 3));
+
+            std::swap(states->frontBuffer, newFrontBuffer);
+          }
+
+          // swap the front and back buffers so our updates are visible
+          std::swap(states->frontBuffer, states->backBuffer);
+
+          // erase the back buffer
+          std::fill(states->backBuffer->begin(), states->backBuffer->end(), 0);
         }
-
+      
       protected:
         StateIndex spoilGrad;
         const value_type trimThreshold;
     };
 
   protected:
-    void insertState(const StateIndex &index, const SpinState &state) {
-      if(curStates == maxStates) {
-        expandStates();
+    
+    static size_t stateIndexToOffset(
+      const StateIndex index,
+      const StateIndex radii,
+      const StateIndex sideLengths)
+    {
+      return (
+          (index[0] + radii[0] - 1) * sideLengths[1] +
+          (index[1] + radii[1] - 1)
+        ) * sideLengths[2] + index[2] + radii[2] - 1;
+    }
+
+    size_t stateIndexToOffset(const StateIndex index) const
+    {
+      return stateIndexToOffset(index, curRadii, curSideLengths); 
+    }
+
+    void expandBackBuffer(
+      const StateIndex neededRadii,
+      StateIndex *backRadii,
+      StateIndex *backSideLengths,
+      size_t *backStates
+    )
+    {
+      StateIndex newSideLengths;
+
+      size_t newStates = 1;
+
+      for(unsigned int i = 0; i < 3; i++)
+      {
+        newSideLengths[i] = neededRadii[i] * 2 - 1;
+        newStates *= newSideLengths[i];
       }
 
-      stateValues[curStates] = state.fPlus;
-      stateValues[curStates + maxStates] = state.fMinus;
-      stateValues[curStates + 2 * maxStates] = state.z;
+      // We'll allocate the new buffer here, but then swap the ptr by the end
+      // of this method, so the new buffer will be retained
+      BufferPtr newBuffer(std::make_unique<BufferVec>(newStates * 3));
+      std::fill(newBuffer->begin(), newBuffer->end(), 0);
 
-      stateMap[index] = curStates;
-      curStates++;
-    }
+      // Perform the copy into the new buffer.
+      // We do one copy per inner-most line of the buffer (e.g., if we think
+      // of coords as z-y-x, then we do one copy of complete x-line
+      // per z/y pair)
+      cvalue_type *readHead = backBuffer->data();
+      
+      std::array<index_type, 2> curIndicies({{0,0}});
 
-    void expandStates() {
-      size_t newMaxStates = maxStates * 2;
-      std::vector<cvalue_type> newStateValues(newMaxStates * 3);
-     
-      BLAS::copy(maxStates,
-          stateValues.data(), 1,
-          newStateValues.data(), 1);
+      std::array<size_t, 3> writeOffsets;
 
-      BLAS::copy(maxStates,
-          stateValues.data() + maxStates, 1,
-          newStateValues.data() + newMaxStates, 1);
+      writeOffsets[0] = (newSideLengths[0] - (*backSideLengths)[0]) / 2;
 
-      BLAS::copy(maxStates,
-          stateValues.data() + 2 * maxStates, 1,
-          newStateValues.data() + 2 * newMaxStates, 1);
+      writeOffsets[1] = (newSideLengths[1] - (*backSideLengths)[1]) / 2;
 
-      maxStates = newMaxStates;
-      stateValues = newStateValues;
-      stateValuesBuffer.resize(newMaxStates * 3);
-    }
+      writeOffsets[2] = (newSideLengths[2] - (*backSideLengths)[2]) / 2;
 
-    void trimStates(const value_type threshold) {
-      StateMapT newMap;
-      size_t newCurStates = 0;
+      for(; curIndicies[0] < (*backSideLengths)[0]; curIndicies[0]++)
+      {
+        size_t outerOffset = (writeOffsets[0] + curIndicies[0]) *
+          newSideLengths[1] * newSideLengths[2];
 
-      typename StateMapT::const_iterator mapIt = stateMap.begin();
+        for(curIndicies[1] = 0; curIndicies[1] < (*backSideLengths)[1]; curIndicies[1]++)
+        {
+          size_t middleOffset =  (writeOffsets[1] + curIndicies[1]) *
+            newSideLengths[2];
 
-      for(; stateMap.end() != mapIt; mapIt++) {
-        value_type nrm =
-          BLAS::nrm2(3, stateValues.data() + mapIt->second, maxStates);
+          cvalue_type *writeHead =
+            newBuffer->data() + outerOffset +
+              middleOffset + writeOffsets[2];
+          
+          BLAS::copy((*backSideLengths)[2], readHead, 1, writeHead, 1);
+          BLAS::copy((*backSideLengths)[2],
+            readHead + (*backStates), 1,
+            writeHead + newStates, 1);
+          BLAS::copy((*backSideLengths)[2],
+            readHead + 2 * (*backStates), 1,
+            writeHead + 2 * newStates, 1);
 
-        //only copy states larger than threshold
-        if(nrm > threshold) {
-          newMap[mapIt->first] = newCurStates;
-          stateValuesBuffer[newCurStates] =
-            stateValues[mapIt->second];
-          stateValuesBuffer[newCurStates + maxStates] =
-            stateValues[mapIt->second + maxStates];
-          stateValuesBuffer[newCurStates + 2 * maxStates] =
-            stateValues[mapIt->second + 2 * maxStates];
-
-          newCurStates++;
+          readHead += (*backSideLengths)[2]; 
         }
       }
 
-      stateMap = newMap;
-      curStates = newCurStates;
-      // move data back from the temporary buffer
-      // this could be eliminated with proper double-buffering...
-      BLAS::copy(curStates, stateValuesBuffer.data(),
-        1, stateValues.data(), 1);
-      BLAS::copy(
-        curStates, stateValuesBuffer.data() + maxStates,
-        1, stateValues.data() + maxStates, 1);
-      BLAS::copy(
-        curStates,
-        stateValuesBuffer.data() + 2 * maxStates,
-        1, stateValues.data() + 2 * maxStates, 1);
+      std::swap(newBuffer, backBuffer); 
+
+      *backStates = newStates;
+      *backSideLengths = newSideLengths;
+      *backRadii = neededRadii;
     }
 
-    typedef std::map<StateIndex, size_t> StateMapT;
+    std::array<index_type, 3> curRadii;
+    std::array<index_type, 3> curSideLengths; 
+    index_type curStates;
 
-    StateMapT stateMap;
-    size_t curStates;
-    size_t maxStates;
-    
-    std::vector< cvalue_type > stateValues;
-    std::vector< cvalue_type > stateValuesBuffer;
+    BufferPtr frontBuffer;
+    BufferPtr backBuffer;
 
 };
 

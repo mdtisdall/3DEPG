@@ -25,7 +25,7 @@ class FLASHTR {
     typename SpinStates::cvalue_type operator()(SpinStates *states) {
       excitation(states);
       typename SpinStates::cvalue_type ret =
-        states->getState(typename SpinStates::StateIndex({0,0,0})).fPlus * 
+        states->getState(typename SpinStates::StateIndex({{0,0,0}})).fPlus * 
         invPhase;
       relaxation(states); 
       spoiling(states); 
