@@ -23,7 +23,7 @@ typedef float value_type;
 
 void test1() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
   FLASHTR<SpinStatesT> flashTR(
     value_type(11) * value_type(M_PI) / value_type(180),
@@ -55,7 +55,7 @@ void test1() {
 
 void test2() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
  typedef ConstantGradSpoilingController<SpinStatesT::StateIndex> 
    GradSpoilingController;
@@ -109,7 +109,7 @@ void test2() {
 
 void test3() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
@@ -164,7 +164,7 @@ void test3() {
 
 void test4() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
  typedef ConstantGradSpoilingController<SpinStatesT::StateIndex> 
    GradSpoilingController;
@@ -218,7 +218,7 @@ void test4() {
 
 void test5() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
@@ -273,7 +273,7 @@ void test5() {
 
 void test6() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(4, 2.2e-3);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
@@ -330,7 +330,7 @@ void test6() {
 
 void test7() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
@@ -386,7 +386,7 @@ void test7() {
 
 void test8() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 
@@ -442,7 +442,7 @@ void test8() {
 
 void test9() {
   typedef SpinStates<long, value_type> SpinStatesT;
-  SpinStatesT spinStates;
+  SpinStatesT spinStates(1, 2.2e-9);
 
 
   typedef HexagonalGradSpoilingController<SpinStatesT::StateIndex> 

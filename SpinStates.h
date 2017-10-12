@@ -22,13 +22,28 @@ class SpinStates {
     typedef std::vector<cvalue_type, mkl_allocator<cvalue_type> > BufferVec;
     typedef std::unique_ptr<BufferVec> BufferPtr;
 
+    static value_type stateIndexNormSq(const StateIndex &index) {
+      return value_type(index[0] * index[0]) +
+        value_type(index[1] * index[1]) +
+        value_type(index[2] * index[2]);
+    }
+    
+    static value_type stateIndexNorm(const StateIndex &index) {
+      return std::sqrt(stateIndexNormSq(index));
+    }
+
   public:
 
     struct SpinState {
       cvalue_type fPlus, fMinus, z; 
     }; 
-
-    SpinStates() :
+    
+    SpinStates(
+      const value_type state_increment_inv_mm, 
+      const value_type diffusionCoeff_mm_sq_per_s
+      ) :
+      diffusionCoeff_mm_sq_per_s(diffusionCoeff_mm_sq_per_s),
+      state_increment_inv_mm(state_increment_inv_mm),
       curRadii({{1,1,1}}),
       curSideLengths({{1,1,1}}),
       curStates(curSideLengths[0] * curSideLengths[1] * curSideLengths[2]),
@@ -40,6 +55,19 @@ class SpinStates {
       (*frontBuffer)[1] = 0;
       (*frontBuffer)[2] = 1;
     }
+
+    SpinStates(
+      const value_type state_increment_gradient_area_mT_s_per_m,
+      const value_type larmour_freq_Hz_per_mT, 
+      const value_type diffusionCoeff_mm_sq_per_s
+      ) :
+      SpinStates(
+        state_increment_gradient_area_mT_s_per_m * larmour_freq_Hz_per_mT *
+        0.001,
+        diffusionCoeff_mm_sq_per_s)
+    {}
+
+
 
     SpinState getState(StateIndex index) {
       SpinState ret;
@@ -148,23 +176,24 @@ class SpinStates {
     
     class Spoiling {
       public:
-        Spoiling(StateIndex spoilGrad, value_type trimThreshold = 0.0) :
+        Spoiling(
+          StateIndex spoilGrad,
+          value_type TR_ms,
+          value_type trimThreshold = 0.0) :
           spoilGrad(spoilGrad),
-          trimThreshold(trimThreshold){}
+          spoilGradNorm(stateIndexNorm(spoilGrad)),
+          TR_ms(TR_ms),
+          trimThreshold(trimThreshold)
+        {}
 
         void operator()(SpinStates<index_type, value_type> *states)
         {
           const unsigned int curStatesLocal = states->curStates;
-     
-          // zero out the fPlus and fMinus states in the back buffer
+    
+          // zero out the back buffer
           std::fill(
             states->backBuffer->begin(),
-            states->backBuffer->begin() + 2 * curStatesLocal, 0);
-         
-          // copy the z components over since those don't shift with spoiling
-          BLAS::copy(curStatesLocal,
-            states->frontBuffer->data() + 2 * curStatesLocal, 1,
-            states->backBuffer->data() + 2 * curStatesLocal, 1);
+            states->backBuffer->end(), 0);
 
           // iterate over each position in the front buffer
           size_t curOffset = 0;
@@ -182,6 +211,15 @@ class SpinStates {
           StateIndex backSideLengths = states->curSideLengths;
           size_t backStates = states->curStates;
 
+          // compute the common scaling factor used in all diffusion
+          // spoiling calculations
+          const value_type commonDiffScale =
+            states->diffusionCoeff_mm_sq_per_s *
+            states->state_increment_inv_mm * states->state_increment_inv_mm *
+            TR_ms * 0.001;
+
+          const value_type oneThird = value_type(1.0)/value_type(3.0);
+
           for(;curIndex[0] < curRadii[0]; curIndex[0]++)
           {
             for(
@@ -195,21 +233,36 @@ class SpinStates {
                 curIndex[2] < curRadii[2];
                 curIndex[2]++, curOffset++)
               {
-                StateIndex curfPlusIndex;
-                StateIndex curfMinusIndex;
 
-                // compute the destination states for the components 
-                for(unsigned int i = 0; i < 3; i++)
-                {
-                  curfPlusIndex[i] = curIndex[i] + spoilGrad[i];
-                  curfMinusIndex[i] = curIndex[i] - spoilGrad[i];
-                }
+                // apply diffusion spoiling
+                const value_type indexNormSq = stateIndexNormSq(curIndex);
+                const value_type indexNorm = std::sqrt(indexNormSq);
                 
+                const value_type diffScaleTrans = exp(- commonDiffScale *
+                  (indexNormSq + indexNorm + oneThird));
+                
+                const value_type diffScaleLong = exp(- commonDiffScale *
+                  indexNormSq);
+               
+                states->frontBuffer->data()[curOffset] *= diffScaleTrans;
+                states->frontBuffer->data()[
+                  curOffset + curStatesLocal] *= diffScaleTrans;
+                states->frontBuffer->data()[
+                  curOffset + 2 * curStatesLocal] *= diffScaleLong;
+
                 // move fPlus component to destination state if it's
                 // larger than the trim threshold.
                 if(std::abs(states->frontBuffer->data()[curOffset]) >=
                     trimThreshold)
                 {
+                  StateIndex curfPlusIndex;
+
+                  // compute the destination states for the components 
+                  for(unsigned int i = 0; i < 3; i++)
+                  {
+                    curfPlusIndex[i] = curIndex[i] + spoilGrad[i];
+                  }
+
                   bool needsExpansion = false;
                   StateIndex neededRadii = backRadii;
 
@@ -234,7 +287,7 @@ class SpinStates {
                   states->backBuffer->data()[destOffset] = 
                     states->frontBuffer->data()[curOffset];
                 }
-
+                
                 // move fMinus component to destination state if it's
                 // larger than the trim threshold.
                 if(
@@ -242,6 +295,14 @@ class SpinStates {
                     states->frontBuffer->data()[curOffset + curStatesLocal]) >=
                     trimThreshold)
                 {
+                  StateIndex curfMinusIndex;
+
+                  // compute the destination states for the components 
+                  for(unsigned int i = 0; i < 3; i++)
+                  {
+                    curfMinusIndex[i] = curIndex[i] - spoilGrad[i];
+                  }
+
                   bool needsExpansion = false;
                   StateIndex neededRadii = backRadii;
 
@@ -265,6 +326,23 @@ class SpinStates {
                   
                   states->backBuffer->data()[destOffset + backStates] = 
                     states->frontBuffer->data()[curOffset + curStatesLocal];
+                }
+
+                // copy the z component to the back buffer if it's
+                // larger than the trim threshold.
+                if(
+                  std::abs(
+                    states->frontBuffer->data()[
+                      curOffset + 2 * curStatesLocal]) >=
+                    trimThreshold)
+                {
+
+                  size_t destOffset =
+                    stateIndexToOffset(
+                      curIndex, backRadii, backSideLengths);
+                  
+                  states->backBuffer->data()[destOffset + 2 * backStates] = 
+                    states->frontBuffer->data()[curOffset + 2 * curStatesLocal];
                 }
               }
             }
@@ -292,6 +370,8 @@ class SpinStates {
       
       protected:
         StateIndex spoilGrad;
+        const value_type spoilGradNorm;
+        const value_type TR_ms;
         const value_type trimThreshold;
     };
 
@@ -383,6 +463,9 @@ class SpinStates {
       *backSideLengths = newSideLengths;
       *backRadii = neededRadii;
     }
+
+    value_type diffusionCoeff_mm_sq_per_s;
+    value_type state_increment_inv_mm;
 
     std::array<index_type, 3> curRadii;
     std::array<index_type, 3> curSideLengths; 
