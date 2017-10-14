@@ -111,20 +111,27 @@ void copy(const int N, const complex<double> *X, const int incX, complex<double>
 
 
 void axpy (const int N, const float *alpha, const float *X, const int incX, float *Y, const int incY) {
-	cblas_saxpy (N, *alpha, X, incX, Y, incY);
+	cblas_saxpy(N, *alpha, X, incX, Y, incY);
 }
 
 void axpy (const int N, const double *alpha, const double *X, const int incX, double *Y, const int incY) {
-	cblas_daxpy (N, *alpha, X, incX, Y, incY);
+	cblas_daxpy(N, *alpha, X, incX, Y, incY);
 }
 
-//void axpy (const int N, const complex<float> *alpha, const complex<float> *X, const int incX, complex<float> *Y, const int incY) {
-//	cblas_caxpy (N, alpha, X, incX, Y, incY);
-//}
-//
-//void axpy (const int N, const complex<double> *alpha, const complex<double> *X, const int incX, complex<double> *Y, const int incY) {
-//	cblas_zaxpy (N, alpha, X, incX, Y, incY);
-//}
+void axpy (const int N,
+    const complex<float> *alpha, const complex<float> *X, const int incX,
+    complex<float> *Y, const int incY) {
+	cblas_caxpy(N,
+    (MKL_Complex8*)alpha, (MKL_Complex8*)X, incX,
+    (MKL_Complex8*)Y, incY);
+}
+
+void axpy (const int N,
+    const complex<double> *alpha, const complex<double> *X, const int incX,
+    complex<double> *Y, const int incY) {
+	cblas_zaxpy(N, (MKL_Complex16*)alpha, (MKL_Complex16*)X, incX,
+    (MKL_Complex16*)Y, incY);
+}
 
 /*
 void ger(const enum MATRIX_ORDER Order, const int M, const int N, const datatype alpha, const datatype *X, const int incX, const datatype *Y, const int incY, datatype *A, const int lda) {

@@ -7,7 +7,10 @@
 
 #include "blas_local.h"
 
+#include "mkl_ops.h"
+
 #include "MKLAllocator/MKLAllocator.h"
+
 
 template <typename index_type, typename _value_type>
 class SpinStates {
@@ -48,12 +51,18 @@ class SpinStates {
       curSideLengths({{1,1,1}}),
       curStates(curSideLengths[0] * curSideLengths[1] * curSideLengths[2]),
       frontBuffer(std::make_unique<BufferVec>(curStates * 3)),
-      backBuffer(std::make_unique<BufferVec>(curStates * 3))
+      backBuffer(std::make_unique<BufferVec>(curStates * 3)),
+      indexNormSqBuffer(
+        std::make_unique<BufferVec>(curStates)),
+      indexNormBuffer(
+        std::make_unique<BufferVec>(curStates))
     {
       //initialize signal at origin
       (*frontBuffer)[0] = 0;
       (*frontBuffer)[1] = 0;
       (*frontBuffer)[2] = 1;
+
+      fillIndexNormBuffer();
     }
 
     SpinStates(
@@ -66,8 +75,6 @@ class SpinStates {
         0.001,
         diffusionCoeff_mm_sq_per_s)
     {}
-
-
 
     SpinState getState(StateIndex index) {
       SpinState ret;
@@ -189,11 +196,99 @@ class SpinStates {
         void operator()(SpinStates<index_type, value_type> *states)
         {
           const unsigned int curStatesLocal = states->curStates;
+          
+          // compute the common scaling factor used in all diffusion
+          // spoiling calculations
+          const cvalue_type negCommonDiffScale =
+            states->diffusionCoeff_mm_sq_per_s *
+            states->state_increment_inv_mm * states->state_increment_inv_mm *
+            TR_ms * -0.001;
     
-          // zero out the back buffer
+          // zero out the first third of the back buffer
           std::fill(
             states->backBuffer->begin(),
-            states->backBuffer->end(), 0);
+            states->backBuffer->begin() + curStatesLocal, 0);
+
+          // calculate the scale factor for longitudinal states
+          // and store it in the first third of the back buffer
+          BLAS::axpy(
+            curStatesLocal,
+            &negCommonDiffScale, states->indexNormSqBuffer->data(), 1,
+            states->backBuffer->data(), 1
+          );
+
+          // exponentiate the factor to get the actual weighting factor
+          // and store it in the second third of the back buffer
+          MKL::vExp(
+            curStatesLocal,
+            states->backBuffer->data(),
+            states->backBuffer->data() + curStatesLocal
+          );
+
+          // scale all the z states by this weighting factor
+          MKL::vMul(
+            curStatesLocal,
+            states->backBuffer->data() + curStatesLocal,
+            states->frontBuffer->data() + 2 * curStatesLocal,
+            states->frontBuffer->data() + 2 * curStatesLocal
+          );
+          
+          // update the scale factor with additional terms for
+          // the transverse states and store it in the first third of
+          // the back buffer
+          BLAS::axpy(
+            curStatesLocal,
+            &negCommonDiffScale, states->indexNormBuffer->data(), 1,
+            states->backBuffer->data(), 1
+          );
+
+          typename BufferVec::iterator it = states->backBuffer->begin();
+          typename BufferVec::iterator itEnd = it + curStatesLocal;
+
+          value_type additionalTerm =
+            std::abs(negCommonDiffScale) / value_type(3.0);
+
+          while(it != itEnd) {
+            *it *= additionalTerm;
+            it++;
+          }
+
+          // exponentiate the transfer factor to get the actual
+          // transverse weighting factor and store it in the second third of
+          // the back buffer
+          MKL::vExp(
+            curStatesLocal,
+            states->backBuffer->data(),
+            states->backBuffer->data() + curStatesLocal
+          );
+         
+          // scale the fPlus states by this factor 
+          MKL::vMul(
+            curStatesLocal,
+            states->backBuffer->data() + curStatesLocal,
+            states->frontBuffer->data(),
+            states->frontBuffer->data()
+          );
+          
+          // scale the fMinus states by this factor 
+          MKL::vMul(
+            curStatesLocal,
+            states->backBuffer->data() + curStatesLocal,
+            states->frontBuffer->data() + curStatesLocal,
+            states->frontBuffer->data() + curStatesLocal
+          );
+
+          // zero out the first 2/3 of the back buffer
+          std::fill(
+            states->backBuffer->begin(),
+            states->backBuffer->begin() + 2 * curStatesLocal, 0
+          );
+
+          // copy the z values since they don't shift
+          BLAS::copy(curStatesLocal,
+              states->frontBuffer->data() + 2 * curStatesLocal, 1,
+              states->backBuffer->data() + 2 * curStatesLocal, 1
+          );
 
           // iterate over each position in the front buffer
           size_t curOffset = 0;
@@ -211,14 +306,8 @@ class SpinStates {
           StateIndex backSideLengths = states->curSideLengths;
           size_t backStates = states->curStates;
 
-          // compute the common scaling factor used in all diffusion
-          // spoiling calculations
-          const value_type commonDiffScale =
-            states->diffusionCoeff_mm_sq_per_s *
-            states->state_increment_inv_mm * states->state_increment_inv_mm *
-            TR_ms * 0.001;
 
-          const value_type oneThird = value_type(1.0)/value_type(3.0);
+          //const value_type oneThird = value_type(1.0)/value_type(3.0);
 
           for(;curIndex[0] < curRadii[0]; curIndex[0]++)
           {
@@ -233,27 +322,8 @@ class SpinStates {
                 curIndex[2] < curRadii[2];
                 curIndex[2]++, curOffset++)
               {
-
-                // apply diffusion spoiling
-                const value_type indexNormSq = stateIndexNormSq(curIndex);
-                const value_type indexNorm = std::sqrt(indexNormSq);
                 
-                const value_type diffScaleTrans = exp(- commonDiffScale *
-                  (indexNormSq + indexNorm + oneThird));
-                
-                const value_type diffScaleLong = exp(- commonDiffScale *
-                  indexNormSq);
-               
-                states->frontBuffer->data()[curOffset] *= diffScaleTrans;
-                states->frontBuffer->data()[
-                  curOffset + curStatesLocal] *= diffScaleTrans;
-                states->frontBuffer->data()[
-                  curOffset + 2 * curStatesLocal] *= diffScaleLong;
-
-                // move fPlus component to destination state if it's
-                // larger than the trim threshold.
-                if(std::abs(states->frontBuffer->data()[curOffset]) >=
-                    trimThreshold)
+                // move fPlus component to destination state
                 {
                   StateIndex curfPlusIndex;
 
@@ -275,25 +345,29 @@ class SpinStates {
                     }
                   }
 
-                  if(needsExpansion) {
-                    states->expandBackBuffer(
-                      neededRadii, &backRadii, &backSideLengths, &backStates);
-                  }
+                  // if we don't need to expand the back buffer,
+                  // or we do need to expand but the current fPlus
+                  // component is big enough to warrant buffer expansion
+                  if((!needsExpansion) ||
+                      (std::abs(states->frontBuffer->data()[curOffset]) >=
+                        trimThreshold))
+                  {
 
-                  size_t destOffset =
-                    stateIndexToOffset(
-                      curfPlusIndex, backRadii, backSideLengths);
-                  
-                  states->backBuffer->data()[destOffset] = 
-                    states->frontBuffer->data()[curOffset];
+                    if(needsExpansion) {
+                      states->expandBackBuffer(
+                        neededRadii, &backRadii, &backSideLengths, &backStates);
+                    }
+
+                    size_t destOffset =
+                      stateIndexToOffset(
+                        curfPlusIndex, backRadii, backSideLengths);
+                    
+                    states->backBuffer->data()[destOffset] = 
+                      states->frontBuffer->data()[curOffset];
+                  }
                 }
                 
-                // move fMinus component to destination state if it's
-                // larger than the trim threshold.
-                if(
-                  std::abs(
-                    states->frontBuffer->data()[curOffset + curStatesLocal]) >=
-                    trimThreshold)
+                // move fMinus component to destination state
                 {
                   StateIndex curfMinusIndex;
 
@@ -315,34 +389,27 @@ class SpinStates {
                     }
                   }
 
-                  if(needsExpansion) {
-                    states->expandBackBuffer(
-                      neededRadii, &backRadii, &backSideLengths, &backStates);
+                  // if we don't need to expand the back buffer,
+                  // or we do need to expand but the current fMinus
+                  // component is big enough to warrant buffer expansion
+                  if((!needsExpansion) ||
+                      std::abs(
+                        states->frontBuffer->data()[
+                          curOffset + curStatesLocal]) >=
+                      trimThreshold)
+                  {
+                    if(needsExpansion) {
+                      states->expandBackBuffer(
+                        neededRadii, &backRadii, &backSideLengths, &backStates);
+                    }
+
+                    size_t destOffset =
+                      stateIndexToOffset(
+                        curfMinusIndex, backRadii, backSideLengths);
+                    
+                    states->backBuffer->data()[destOffset + backStates] = 
+                      states->frontBuffer->data()[curOffset + curStatesLocal];
                   }
-
-                  size_t destOffset =
-                    stateIndexToOffset(
-                      curfMinusIndex, backRadii, backSideLengths);
-                  
-                  states->backBuffer->data()[destOffset + backStates] = 
-                    states->frontBuffer->data()[curOffset + curStatesLocal];
-                }
-
-                // copy the z component to the back buffer if it's
-                // larger than the trim threshold.
-                if(
-                  std::abs(
-                    states->frontBuffer->data()[
-                      curOffset + 2 * curStatesLocal]) >=
-                    trimThreshold)
-                {
-
-                  size_t destOffset =
-                    stateIndexToOffset(
-                      curIndex, backRadii, backSideLengths);
-                  
-                  states->backBuffer->data()[destOffset + 2 * backStates] = 
-                    states->frontBuffer->data()[curOffset + 2 * curStatesLocal];
                 }
               }
             }
@@ -359,13 +426,24 @@ class SpinStates {
               std::make_unique<BufferVec>(states->curStates * 3));
 
             std::swap(states->frontBuffer, newFrontBuffer);
+
+            // we also need to allocate and refill the indexNorm buffers
+            BufferPtr newIndexNormSqBuffer(
+              std::make_unique<BufferVec>(states->curStates));
+            BufferPtr newIndexNormBuffer(
+              std::make_unique<BufferVec>(states->curStates));
+
+            std::swap(states->indexNormBuffer, newIndexNormBuffer);
+            std::swap(states->indexNormSqBuffer, newIndexNormSqBuffer);
+
+            states->fillIndexNormBuffer();
           }
 
           // swap the front and back buffers so our updates are visible
           std::swap(states->frontBuffer, states->backBuffer);
 
           // erase the back buffer
-          std::fill(states->backBuffer->begin(), states->backBuffer->end(), 0);
+          //std::fill(states->backBuffer->begin(), states->backBuffer->end(), 0);
         }
       
       protected:
@@ -391,6 +469,38 @@ class SpinStates {
     size_t stateIndexToOffset(const StateIndex index) const
     {
       return stateIndexToOffset(index, curRadii, curSideLengths); 
+    }
+
+    void fillIndexNormBuffer() {
+      // iterate over each position in the front buffer
+      size_t curOffset = 0;
+      StateIndex curIndex =
+        StateIndex({{
+          1 - curRadii[0],
+          1 - curRadii[1],
+          1 - curRadii[2]
+        }});
+          
+      for(;curIndex[0] < curRadii[0]; curIndex[0]++)
+      {
+        for(
+          curIndex[1] = 1 - curRadii[1];
+          curIndex[1] < curRadii[1];
+          curIndex[1]++)
+        {
+
+          for(
+            curIndex[2] = 1 - curRadii[2];
+            curIndex[2] < curRadii[2];
+            curIndex[2]++, curOffset++)
+          {
+
+            indexNormSqBuffer->data()[curOffset] = stateIndexNormSq(curIndex);
+          }
+        }
+      }
+
+      MKL::vSqrt(curStates, indexNormSqBuffer->data(), indexNormBuffer->data());
     }
 
     void expandBackBuffer(
@@ -473,6 +583,8 @@ class SpinStates {
 
     BufferPtr frontBuffer;
     BufferPtr backBuffer;
+    BufferPtr indexNormSqBuffer;
+    BufferPtr indexNormBuffer;
 
 };
 

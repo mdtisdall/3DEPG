@@ -23,8 +23,9 @@ all : test transtest
 
 transtest :
 
-test : blas_local_MKL.o
+test : blas_local_MKL.o mkl_ops_mkl.o
 
 clean:
+	rm *.o
 	rm -rf test
 	rm -rf transtest
