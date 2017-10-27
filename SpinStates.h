@@ -5,6 +5,8 @@
 #include <array>
 #include <vector>
 
+#include <memory>
+
 #include "blas_local.h"
 
 #include "mkl_ops.h"

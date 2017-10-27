@@ -1,5 +1,5 @@
 
-MKLROOT = /opt/intel/mkl
+MKLROOT = /home/dtisdal/intel/mkl
 
 
 CPPFLAGS += -DMKL_ILP64 -m64 
@@ -11,13 +11,18 @@ CXXFLAGS += -O3
 # Flags passed to the C++ compiler.
 CXXFLAGS += -Wall -Wextra -pthread -std=c++14
 CXXFLAGS += -DMKL_DIRECT_CALL_SEQ
-CXXFLAGS += -I~/Documents/Research/In_Prep/MPRAGE/3DEPG
+CXXFLAGS += -I./
 
 #LDFLAGS += -L ~/lib
-LDLIBS += ${MKLROOT}/lib/libmkl_intel_ilp64.a
-LDLIBS += ${MKLROOT}/lib/libmkl_sequential.a
-LDLIBS += ${MKLROOT}/lib/libmkl_core.a
-LDFLAGS += -lpthread -lm -ldl
+ifeq ($(strip $(OS)),Linux)
+	LDLIBS += -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group
+	LDLIBS += -lpthread -lm -ldl
+else
+	LDLIBS += ${MKLROOT}/lib/libmkl_intel_ilp64.a
+	LDLIBS += ${MKLROOT}/lib/libmkl_sequential.a
+	LDLIBS += ${MKLROOT}/lib/libmkl_core.a
+	LDLIBS += -lpthread -lm -ldl
+endif
 
 all : test transtest 
 
