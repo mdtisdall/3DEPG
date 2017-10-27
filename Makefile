@@ -1,6 +1,9 @@
 
+ifeq ($(strip $(OS)),Linux)
 MKLROOT = /home/dtisdal/intel/mkl
-
+else
+MKLROOT = /opt/intel/mkl
+endif
 
 CPPFLAGS += -DMKL_ILP64 -m64 
 CPPFLAGS += -I${MKLROOT}/include 
