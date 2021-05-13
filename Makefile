@@ -1,15 +1,9 @@
+CXXFLAGS += -DMKL_ILP64 -m64 
 
-ifeq ($(strip $(OS)),Linux)
-MKLROOT = $(HOME)/intel/mkl
-else
-MKLROOT = /opt/intel/mkl
-endif
+CXX = g++
 
-CPPFLAGS += -DMKL_ILP64 -m64 
-CPPFLAGS += -I${MKLROOT}/include 
-
-#CXXFLAGS += -g
-CXXFLAGS += -O3
+CXXFLAGS += -g
+#CXXFLAGS += -O3
 
 # Flags passed to the C++ compiler.
 CXXFLAGS += -Wall -Wextra -pthread -std=c++14
@@ -18,22 +12,19 @@ CXXFLAGS += -I./
 
 #LDFLAGS += -L ~/lib
 ifeq ($(strip $(OS)),Linux)
-	LDLIBS += -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group
+	LDLIBS += -Wl,--start-group libmkl_intel_ilp64.a libmkl_sequential.a libmkl_core.a -Wl,--end-group
 	LDLIBS += -lpthread -lm -ldl
 else
-	LDLIBS += ${MKLROOT}/lib/libmkl_intel_ilp64.a
-	LDLIBS += ${MKLROOT}/lib/libmkl_sequential.a
-	LDLIBS += ${MKLROOT}/lib/libmkl_core.a
+	LDLIBS += -lmkl_intel_ilp64
+	LDLIBS += -lmkl_sequential
+	LDLIBS += -lmkl_core
 	LDLIBS += -lpthread -lm -ldl
 endif
 
-all : test transtest 
+all : examples/MPSSFP_example
 
-transtest :
-
-test : blas_local_MKL.o mkl_ops_mkl.o
+examples/MPSSFP_example : core/blas_local_MKL.o core/mkl_ops_mkl.o
 
 clean:
-	rm *.o
-	rm -rf test
-	rm -rf transtest
+	rm -f core/*.o
+	rm -rf examples/MPSSFP_example
